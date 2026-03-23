@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "types": ["./worker-configuration.d.ts"],
+    "esModuleInterop": true,
+    "target": "ES2024",
+    "moduleResolution": "bundler"
+  }
+}

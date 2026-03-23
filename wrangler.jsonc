@@ -1,18 +1,19 @@
 {
-	"$schema": "./node_modules/wrangler/config-schema.json",
-	"name": "p5js-comment-bot",
-	"main": "src/index.js",
-	"compatibility_date": "2026-03-04",
-	"workers_dev": false,
-	"observability": {
-		"enabled": true
-	},
-	"routes": [
-		{
-			"pattern": "cr.p5js.org",
-			"zone_name": "p5js.org",
-			"custom_domain": true
-		}
-	],
-	"preview_urls": false
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "p5js-comment-bot",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-03-04",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "observability": {
+    "enabled": true,
+  },
+  "routes": [
+    {
+      "pattern": "cr.p5js.org",
+      "zone_name": "p5js.org",
+      "custom_domain": true,
+    },
+  ],
+  "preview_urls": false,
 }
