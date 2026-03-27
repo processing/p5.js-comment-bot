@@ -38,7 +38,8 @@ router.post(
     }
   },
   async (c) => {
-    const payload = c.get("payload");
+		const payload = c.get("payload");
+    // TODO: identify and execute steps according to workflow run
     if (
       payload.workflow_run.name ===
         "Publish approved pull requests and latest commit to pkg.pr.new" &&
@@ -141,7 +142,7 @@ router.post(
 
 ${cdnLinks}
 
-### Published Packages:
+### Published Packages
 
 ${packages}
 
