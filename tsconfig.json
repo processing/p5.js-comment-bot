@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "types": ["./worker-configuration.d.ts"],
+    "types": ["./worker-configuration.d.ts", "@cloudflare/vitest-pool-workers"],
     "esModuleInterop": true,
     "target": "ES2024",
     "moduleResolution": "bundler"

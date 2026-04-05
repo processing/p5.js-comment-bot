@@ -1,10 +1,16 @@
-export function updateComment(comment, packages, commitHash) {
+import type { ArtifactData } from ".";
+
+export function updateComment(
+  comment: string,
+  packages: ArtifactData["packages"],
+  commitHash: string,
+) {
   const historyRegex = /#### (?<commitHash>.{7})\n(?<links>[\s\S]+?)\n\n/g;
   const currentCommitRegex = /Commit hash: (?<currentCommit>.{7})/g;
   const currentCDNRegex = /### CDN link\n\n(?<cdnLinks>[\s\S]+?)\n\n/g;
   const currentPackagesRegex = /### Published Packages\n\n(?<packagesLink>[\s\S]+?)\n\n/g;
 
-  let result;
+  let result: RegExpExecArray;
   const history = [];
   while ((result = historyRegex.exec(comment)) !== null) {
     history.push(result.groups);

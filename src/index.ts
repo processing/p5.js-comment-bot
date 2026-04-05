@@ -18,6 +18,20 @@ interface Payload {
   };
 }
 
+export interface ArtifactData {
+  packages: {
+    name: string;
+    url: string;
+    shasum: string;
+  }[];
+  templates: unknown[];
+  workflow: {
+    pull_request?: {
+      number: string;
+    };
+  };
+}
+
 const router = new Hono<{ Variables: { payload: Payload }; Bindings: Env }>();
 
 router.get("/webhooks", async (c) => {
@@ -30,15 +44,19 @@ router.post(
     const signature = c.req.header("x-hub-signature-256");
     const body = await c.req.text();
 
-    if (signature && (await verifySignature(signature.split("=")[1], body, env.WEBHOOK_SECRET))) {
-      c.set("payload", JSON.parse(body) as Payload);
-      await next();
-    } else {
-      return c.body("Forbidden", 403);
+    try{
+	    if (signature && (await verifySignature(signature.split("=")[1], body, env.WEBHOOK_SECRET))) {
+	      c.set("payload", JSON.parse(body) as Payload);
+	      await next();
+	    } else {
+	      return c.body("Forbidden", 403);
+			}
+		} catch {
+			return c.body("Forbidden", 403);
     }
   },
   async (c) => {
-		const payload = c.get("payload");
+    const payload = c.get("payload");
     // TODO: identify and execute steps according to workflow run
     if (
       payload.workflow_run.name ===
@@ -48,6 +66,7 @@ router.post(
     ) {
       console.log(`Receive workflow run: ${payload.workflow_run.html_url}`);
 
+      // Use app JWT token to exchange for installation access token
       const jwt = await generateAPPJWT();
       const installationID = payload.installation.id;
       const tokenRes = await request(
@@ -61,16 +80,17 @@ router.post(
       );
       const { token } = await tokenRes.json<{ token: string }>();
 
+      // Use installation access token to request workflow artifact
       const url = payload.workflow_run.artifacts_url;
       const artifactsRes = await request(url, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
-
       const { artifacts } = await artifactsRes.json<{
         artifacts: { archive_download_url: string }[];
       }>();
+
       if (artifacts.length === 0) {
         console.warn("No workflow artifact detected. Is the workflow working?");
         return c.body("");
@@ -84,7 +104,7 @@ router.post(
       });
       const buffer = await res.arrayBuffer();
       const zip = await JSZip.loadAsync(buffer);
-      const data = JSON.parse(await zip.file("output.json").async("string"));
+      const data = JSON.parse(await zip.file("output.json").async("string")) as ArtifactData;
 
       if (!data.workflow.pull_request) {
         // Worflow not triggered by PR, no comment
@@ -101,19 +121,20 @@ router.post(
         },
       );
       const comments = await commentsRes.json<{ body: string; id: string }[]>();
+      // Find comment that the bot left previously
       const previousComment = comments.find((comment) => {
         return comment.body.includes("## Continuous Release");
       });
+      const newComment = updateComment(
+        previousComment?.body,
+        data.packages,
+        payload.workflow_run.head_sha.substring(0, 7),
+      );
 
       if (previousComment) {
+        // If comment was left previously, update it
         console.log("Update comment");
         const commentID = previousComment.id;
-        const newComment = updateComment(
-          previousComment.body,
-          data.packages,
-          payload.workflow_run.head_sha.substring(0, 7),
-        );
-
         await request(
           `https://api.github.com/repos/processing/p5.js/issues/comments/${commentID}`,
           {
@@ -128,36 +149,8 @@ router.post(
         );
         console.log(`Comment updated in PR ${data.workflow.pull_request.number}`);
       } else {
+        // If comment not found previously, leave a new comment
         console.log("Create new comment");
-
-        // Build and leave comment
-        const packages = data.packages.map((p) => `- ${p.url}`).join("\n");
-
-        const cdnLinks = data.packages
-          .map((p) => `- ${p.url.replace("pkg.pr.new", "raw.esm.sh/pr")}/lib/p5.min.js`)
-          .join("\n");
-        const message = `## Continuous Release
-
-### CDN link
-
-${cdnLinks}
-
-### Published Packages
-
-${packages}
-
-Commit hash: ${payload.workflow_run.head_sha.substring(0, 7)}
-
-<details>
-
-<summary>Previous deployments</summary>
-
-</details>
-
----
-
-_This is an automated message._`;
-
         await request(
           `https://api.github.com/repos/processing/p5.js/issues/${data.workflow.pull_request.number}/comments`,
           {
@@ -166,11 +159,10 @@ _This is an automated message._`;
               Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
-              body: message,
+              body: newComment,
             }),
           },
         );
-
         console.log(`Comment created in PR ${data.workflow.pull_request.number}`);
       }
     }
