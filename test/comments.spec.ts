@@ -1,4 +1,4 @@
-import { describe, it, assert } from "vitest";
+import { describe, it, assert } from "vite-plus/test";
 import { updateComment } from "../src/comments";
 
 describe("Update comments", () => {
@@ -130,6 +130,9 @@ _This is an automated message._
       },
     ]);
 
-    assert.equal(updateComment(updatedCommentExample1, packages, commitHash), updatedCommentExample2);
+    assert.equal(
+      updateComment(updatedCommentExample1, packages, commitHash),
+      updatedCommentExample2,
+    );
   });
 });

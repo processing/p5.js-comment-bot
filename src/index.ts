@@ -44,15 +44,15 @@ router.post(
     const signature = c.req.header("x-hub-signature-256");
     const body = await c.req.text();
 
-    try{
-	    if (signature && (await verifySignature(signature.split("=")[1], body, env.WEBHOOK_SECRET))) {
-	      c.set("payload", JSON.parse(body) as Payload);
-	      await next();
-	    } else {
-	      return c.body("Forbidden", 403);
-			}
-		} catch {
-			return c.body("Forbidden", 403);
+    try {
+      if (signature && (await verifySignature(signature.split("=")[1], body, env.WEBHOOK_SECRET))) {
+        c.set("payload", JSON.parse(body) as Payload);
+        await next();
+      } else {
+        return c.body("Forbidden", 403);
+      }
+    } catch {
+      return c.body("Forbidden", 403);
     }
   },
   async (c) => {
