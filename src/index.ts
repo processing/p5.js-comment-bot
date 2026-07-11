@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { Hono } from "hono";
-import JSZip from "jszip";
+import JSZip, { JSZipObject } from "jszip";
 import { verifySignature, request, generateAPPJWT } from "./utils";
 import { updateComment } from "./comments";
 
@@ -104,7 +104,9 @@ router.post(
       });
       const buffer = await res.arrayBuffer();
       const zip = await JSZip.loadAsync(buffer);
-      const data = JSON.parse(await zip.file("output.json").async("string")) as ArtifactData;
+      const data = JSON.parse(
+        await (zip.file("output.json") as JSZipObject).async("string"),
+      ) as ArtifactData;
 
       if (!data.workflow.pull_request) {
         // Worflow not triggered by PR, no comment
@@ -126,7 +128,7 @@ router.post(
         return comment.body.includes("## Continuous Release");
       });
       const newComment = updateComment(
-        previousComment?.body,
+        previousComment?.body ?? "",
         data.packages,
         payload.workflow_run.head_sha.substring(0, 7),
       );

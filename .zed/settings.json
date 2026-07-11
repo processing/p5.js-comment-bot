@@ -73,6 +73,7 @@
       ]
     },
     "JavaScript": {
+      "language_servers": ["!vtsls", "..."],
       "format_on_save": "on",
       "prettier": {
         "allowed": false
@@ -191,6 +192,7 @@
       ]
     },
     "TypeScript": {
+      "language_servers": ["!vtsls", "!typescript-language-server", "..."],
       "format_on_save": "on",
       "prettier": {
         "allowed": false

@@ -1,7 +1,7 @@
 import type { ArtifactData } from ".";
 
 export function updateComment(
-  comment: string,
+  comment: string | null,
   packages: ArtifactData["packages"],
   commitHash: string,
 ) {
@@ -10,17 +10,17 @@ export function updateComment(
   const currentCDNRegex = /### CDN link\n\n(?<cdnLinks>[\s\S]+?)\n\n/g;
   const currentPackagesRegex = /### Published Packages\n\n(?<packagesLink>[\s\S]+?)\n\n/g;
 
-  let result: RegExpExecArray;
+  let result: RegExpExecArray | null;
   const history = [];
-  while ((result = historyRegex.exec(comment)) !== null) {
+  while ((result = historyRegex.exec(comment || "")) !== null) {
     history.push(result.groups);
   }
 
-  const currentCommitHash = currentCommitRegex.exec(comment)?.groups.currentCommit;
-  const currentCDNLink = currentCDNRegex.exec(comment)?.groups.cdnLinks;
-  const currentPackagesLink = currentPackagesRegex.exec(comment)?.groups.packagesLink;
+  const currentCommitHash = currentCommitRegex.exec(comment || "")?.groups?.currentCommit;
+  const currentCDNLink = currentCDNRegex.exec(comment || "")?.groups?.cdnLinks;
+  const currentPackagesLink = currentPackagesRegex.exec(comment || "")?.groups?.packagesLink;
 
-  if (currentCommitHash && !history.find((item) => item.commitHash === currentCommitHash)) {
+  if (currentCommitHash && !history.find((item) => item?.commitHash === currentCommitHash)) {
     history.unshift({
       commitHash: currentCommitHash,
       links: `${currentCDNLink}\n${currentPackagesLink}`,
@@ -30,8 +30,8 @@ export function updateComment(
   const historyList = history
     .map((item) => {
       return `
-#### ${item.commitHash}
-${item.links}
+#### ${item?.commitHash}
+${item?.links}
 		`.trim();
     })
     .join("\n\n");
