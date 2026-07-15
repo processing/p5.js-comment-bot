@@ -1,4 +1,4 @@
-import type { ArtifactData } from ".";
+import type { ArtifactData } from "./types";
 
 export function updateComment(
   comment: string | null,

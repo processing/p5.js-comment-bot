@@ -3,6 +3,7 @@
     "types": ["./worker-configuration.d.ts", "@cloudflare/vitest-pool-workers", "node"],
     "esModuleInterop": true,
     "target": "ES2024",
-    "moduleResolution": "bundler"
+    "moduleResolution": "bundler",
+    "module": "esnext"
   }
 }

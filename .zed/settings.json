@@ -192,7 +192,7 @@
       ]
     },
     "TypeScript": {
-      "language_servers": ["!vtsls", "!typescript-language-server", "..."],
+      "language_servers": ["!tsgo", "!typescript-language-server", "..."],
       "format_on_save": "on",
       "prettier": {
         "allowed": false

@@ -1,36 +1,9 @@
 import { env } from "cloudflare:workers";
 import { Hono } from "hono";
-import JSZip, { JSZipObject } from "jszip";
-import { verifySignature, request, generateAPPJWT } from "./utils";
+import { verifySignature, Fetcher } from "./utils";
 import { updateComment } from "./comments";
-
-interface Payload {
-  workflow_run: {
-    name: string;
-    status: string;
-    conclusion: string;
-    html_url: string;
-    artifacts_url: string;
-    head_sha: string;
-  };
-  installation: {
-    id: string;
-  };
-}
-
-export interface ArtifactData {
-  packages: {
-    name: string;
-    url: string;
-    shasum: string;
-  }[];
-  templates: unknown[];
-  workflow: {
-    pull_request?: {
-      number: string;
-    };
-  };
-}
+import { match } from "ts-pattern";
+import type { Payload, Comment } from "./types";
 
 const router = new Hono<{ Variables: { payload: Payload }; Bindings: Env }>();
 
@@ -41,6 +14,7 @@ router.get("/webhooks", async (c) => {
 router.post(
   "/webhooks",
   async (c, next) => {
+    // Check that webhook is sent from GitHub by verifying the signature
     const signature = c.req.header("x-hub-signature-256");
     const body = await c.req.text();
 
@@ -58,116 +32,83 @@ router.post(
   async (c) => {
     const payload = c.get("payload");
     // TODO: identify and execute steps according to workflow run
-    if (
-      payload.workflow_run.name ===
-        "Publish approved pull requests and latest commit to pkg.pr.new" &&
-      payload.workflow_run.status === "completed" &&
-      payload.workflow_run.conclusion === "success"
-    ) {
-      console.log(`Receive workflow run: ${payload.workflow_run.html_url}`);
-
-      // Use app JWT token to exchange for installation access token
-      const jwt = await generateAPPJWT();
-      const installationID = payload.installation.id;
-      const tokenRes = await request(
-        `https://api.github.com/app/installations/${installationID}/access_tokens`,
+    await match(payload.workflow_run)
+      .with(
         {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${jwt}`,
-          },
+          name: "Publish approved pull requests and latest commit to pkg.pr.new",
+          status: "completed",
+          conclusion: "success",
         },
-      );
-      const { token } = await tokenRes.json<{ token: string }>();
+        async () => {
+          console.log(`Receive workflow run: ${payload.workflow_run.html_url}`);
 
-      // Use installation access token to request workflow artifact
-      const url = payload.workflow_run.artifacts_url;
-      const artifactsRes = await request(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
+          const fetcher = new Fetcher(payload.installation.id);
+
+          // Use installation access token to request workflow artifact
+          const url = payload.workflow_run.artifacts_url;
+          const data = await fetcher.getArtifacts(url);
+
+          if (!data?.workflow.pull_request) {
+            // Worflow not triggered by PR, no comment
+            return c.body("");
+          }
+
+          // Fetch list of comments in PR
+          const commentsRes = await fetcher.fetch(
+            `https://api.github.com/repos/processing/p5.js/issues/${data.workflow.pull_request.number}/comments`,
+          );
+          const comments = await commentsRes.json<Comment[]>();
+          // Find comment that the bot left previously
+          const previousComment = comments.find((comment) => {
+            return comment.body.includes("## Continuous Release");
+          });
+          const newComment = updateComment(
+            previousComment?.body ?? "",
+            data.packages,
+            payload.workflow_run.head_sha.substring(0, 7),
+          );
+
+          if (previousComment) {
+            // If comment was left previously, update it
+            console.log("Update comment");
+            const commentID = previousComment.id;
+            await fetcher.fetch(
+              `https://api.github.com/repos/processing/p5.js/issues/comments/${commentID}`,
+              {
+                method: "PATCH",
+                body: JSON.stringify({
+                  body: newComment,
+                }),
+              },
+            );
+            console.log(`Comment updated in PR ${data.workflow.pull_request.number}`);
+          } else {
+            // If comment not found previously, leave a new comment
+            console.log("Create new comment");
+            await fetcher.fetch(
+              `https://api.github.com/repos/processing/p5.js/issues/${data.workflow.pull_request.number}/comments`,
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  body: newComment,
+                }),
+              },
+            );
+            console.log(`Comment created in PR ${data.workflow.pull_request.number}`);
+          }
         },
-      });
-      const { artifacts } = await artifactsRes.json<{
-        artifacts: { archive_download_url: string }[];
-      }>();
-
-      if (artifacts.length === 0) {
-        console.warn("No workflow artifact detected. Is the workflow working?");
-        return c.body("");
-      }
-
-      const artifactURL = artifacts[0].archive_download_url;
-      const res = await request(artifactURL, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const buffer = await res.arrayBuffer();
-      const zip = await JSZip.loadAsync(buffer);
-      const data = JSON.parse(
-        await (zip.file("output.json") as JSZipObject).async("string"),
-      ) as ArtifactData;
-
-      if (!data.workflow.pull_request) {
-        // Worflow not triggered by PR, no comment
-        return c.body("");
-      }
-
-      // Fetch list of comments in PR
-      const commentsRes = await request(
-        `https://api.github.com/repos/processing/p5.js/issues/${data.workflow.pull_request.number}/comments`,
+      )
+      .with(
         {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          name: "",
+          status: "completed",
+          conclusion: "success",
         },
-      );
-      const comments = await commentsRes.json<{ body: string; id: string }[]>();
-      // Find comment that the bot left previously
-      const previousComment = comments.find((comment) => {
-        return comment.body.includes("## Continuous Release");
+        async () => {},
+      )
+      .otherwise(() => {
+        console.log(`Unsupported workflow: ${payload.workflow_run.name}`);
       });
-      const newComment = updateComment(
-        previousComment?.body ?? "",
-        data.packages,
-        payload.workflow_run.head_sha.substring(0, 7),
-      );
-
-      if (previousComment) {
-        // If comment was left previously, update it
-        console.log("Update comment");
-        const commentID = previousComment.id;
-        await request(
-          `https://api.github.com/repos/processing/p5.js/issues/comments/${commentID}`,
-          {
-            method: "PATCH",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              body: newComment,
-            }),
-          },
-        );
-        console.log(`Comment updated in PR ${data.workflow.pull_request.number}`);
-      } else {
-        // If comment not found previously, leave a new comment
-        console.log("Create new comment");
-        await request(
-          `https://api.github.com/repos/processing/p5.js/issues/${data.workflow.pull_request.number}/comments`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              body: newComment,
-            }),
-          },
-        );
-        console.log(`Comment created in PR ${data.workflow.pull_request.number}`);
-      }
-    }
 
     return c.body("");
   },
